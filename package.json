@@ -1,0 +1,15 @@
+{
+  "name": "codex-usage-desktop-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local desktop dashboard for tracking Codex usage windows and OpenAI API usage.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js"
+  },
+  "devDependencies": {
+    "electron": "^32.2.0"
+  }
+}
