@@ -24,7 +24,8 @@ const els = {
   goGithubSourceStatus: document.querySelector("#goGithubSourceStatus"),
   goGmailSourceStatus: document.querySelector("#goGmailSourceStatus"),
   updatedAt: document.querySelector("#updatedAt"),
-  syncAllButton: document.querySelector("#syncAllButton")
+  syncAllButton: document.querySelector("#syncAllButton"),
+  themeToggleButton: document.querySelector("#themeToggleButton")
 };
 
 let state = loadState();
@@ -222,6 +223,44 @@ async function syncAll() {
 }
 
 els.syncAllButton.addEventListener("click", syncAll);
+
+const THEME_CYCLE = ["system", "light", "dark"];
+let themeMode = "system";
+
+function applyThemeMode(mode, dark) {
+  themeMode = mode;
+  const label = { system: "Theme: system", light: "Theme: light", dark: "Theme: dark" }[mode] || "Theme";
+  els.themeToggleButton.textContent = label;
+  document.documentElement.dataset.theme =
+    mode === "system" ? (dark ? "dark" : "light") : mode;
+}
+
+async function initTheme() {
+  if (!window.usageBridge || !els.themeToggleButton) return;
+  try {
+    const theme = await window.usageBridge.getTheme();
+    applyThemeMode(theme.mode, theme.dark);
+  } catch {
+    applyThemeMode("system", window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+}
+
+els.themeToggleButton?.addEventListener("click", async () => {
+  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(themeMode) + 1) % THEME_CYCLE.length];
+  try {
+    const theme = await window.usageBridge.setTheme(next);
+    applyThemeMode(theme.mode, theme.dark);
+  } catch {
+    applyThemeMode(next, window.matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+});
+
+window.usageBridge?.onThemeChanged?.((dark) => {
+  if (themeMode === "system") applyThemeMode("system", dark);
+  else applyThemeMode(themeMode, dark);
+});
+
 render();
 syncAll();
+initTheme();
 setInterval(syncAll, 5 * 60 * 1000);

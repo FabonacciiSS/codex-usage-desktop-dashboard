@@ -338,7 +338,7 @@ function createWindow() {
     height: 780,
     minWidth: 920,
     minHeight: 640,
-    title: "Codex Usage Dashboard",
+    title: "AI Usage Dashboard",
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#111418" : "#f6f7f9",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -351,11 +351,25 @@ function createWindow() {
 }
 
 app.on("nativeTheme", () => {
-  const themeGenerated = nativeTheme.shouldUseDarkColors;
+  const dark = nativeTheme.shouldUseDarkColors;
   for (const win of BrowserWindow.getAllWindows()) {
-    win.setBackgroundColor(themeGenerated ? "#111418" : "#f6f7f9");
+    win.setBackgroundColor(dark ? "#111418" : "#f6f7f9");
+    try {
+      win.webContents.send("theme:changed", dark);
+    } catch {
+      /* window not ready yet */
+    }
   }
 });
+
+ipcMain.handle("theme:set", (event, mode) => {
+  if (["system", "light", "dark"].includes(mode)) nativeTheme.themeSource = mode;
+  return { mode: nativeTheme.themeSource, dark: nativeTheme.shouldUseDarkColors };
+});
+ipcMain.handle("theme:get", () => ({
+  mode: nativeTheme.themeSource,
+  dark: nativeTheme.shouldUseDarkColors
+}));
 
 app.whenReady().then(() => {
   importOpenCodeGoSessionFromEnvironment();

@@ -25,7 +25,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0e1116;
     --panel: #171b22;
     --raised: #1c212b;
@@ -46,6 +47,33 @@
     --danger-soft: rgba(240, 120, 115, 0.15);
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --panel: #171b22;
+  --raised: #1c212b;
+  --text: #e8ebf0;
+  --muted: #94a0b0;
+  --line: #262d37;
+  --line-strong: #333c49;
+  --accent: #5c8dff;
+  --accent-strong: #7ba4ff;
+  --accent-soft: rgba(92, 141, 255, 0.14);
+  --chip-bg: #232a35;
+  --track: #252c37;
+  --good: #58c886;
+  --good-soft: rgba(88, 200, 134, 0.14);
+  --warn: #e8a44c;
+  --warn-soft: rgba(232, 164, 76, 0.15);
+  --danger: #f07873;
+  --danger-soft: rgba(240, 120, 115, 0.15);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -87,6 +115,16 @@ button:active {
 button:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+button.secondary {
+  background: var(--chip-bg);
+  color: var(--text);
+  box-shadow: none;
+}
+
+button.secondary:hover {
+  background: var(--track);
 }
 
 .shell {
