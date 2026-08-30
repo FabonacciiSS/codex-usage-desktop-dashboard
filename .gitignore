@@ -1,6 +1,31 @@
-node_modules/
-.DS_Store
+# Sensitive
 .env
+.env.*
+!.env.example
+*.jsonc.webflow
+secrets/
+*.key
+*.pem
+
+# Dependencies
+node_modules/
 dist/
-*.log
+
+# Build / packaging
 *.zip
+*.asar
+*.log
+!assets/dashboard.png
+
+# Local runtime state (encrypted sessions, dumps, screenshots)
+verify-dump.json
+verify.png
+capture-verify.js
+migrate-*.js
+opencode-go-sessions.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,66 +1,39 @@
-const STORAGE_KEY = "codex-usage-dashboard-v1";
-
-const sampleState = {
-  quota: {
-    planName: "Codex 5-hour window",
-    usedUnits: 18,
-    windowCap: 80,
-    resetTime: nextResetTime(),
-    notes: "Update this from Settings > Usage or the Codex limit banner whenever Codex shows a reset time."
-  },
-  quotaLog: [
-    {
-      at: new Date().toISOString(),
-      planName: "Codex 5-hour window",
-      usedUnits: 18,
-      windowCap: 80,
-      resetTime: nextResetTime(),
-      notes: "Sample entry"
-    }
-  ],
-  api: null
-};
+const STORAGE_KEY = "ai-usage-dashboard-v2";
 
 const els = {
-  codexUsed: document.querySelector("#codexUsed"),
-  codexProgress: document.querySelector("#codexProgress"),
-  codexRemaining: document.querySelector("#codexRemaining"),
-  resetCountdown: document.querySelector("#resetCountdown"),
-  resetAt: document.querySelector("#resetAt"),
-  apiRequests: document.querySelector("#apiRequests"),
-  apiTokens: document.querySelector("#apiTokens"),
-  apiCost: document.querySelector("#apiCost"),
-  apiStatus: document.querySelector("#apiStatus"),
-  apiUpdatedAt: document.querySelector("#apiUpdatedAt"),
-  modelList: document.querySelector("#modelList"),
-  emptyModelState: document.querySelector("#emptyModelState"),
-  quotaLog: document.querySelector("#quotaLog"),
-  quotaForm: document.querySelector("#quotaForm"),
-  planName: document.querySelector("#planName"),
-  usedUnits: document.querySelector("#usedUnits"),
-  windowCap: document.querySelector("#windowCap"),
-  resetTime: document.querySelector("#resetTime"),
-  notes: document.querySelector("#notes"),
-  syncApiButton: document.querySelector("#syncApiButton"),
-  resetDemoButton: document.querySelector("#resetDemoButton")
+  codexH5Used: document.querySelector("#codexH5Used"),
+  codexH5Progress: document.querySelector("#codexH5Progress"),
+  codexH5Remaining: document.querySelector("#codexH5Remaining"),
+  codexWeekUsed: document.querySelector("#codexWeekUsed"),
+  codexWeekProgress: document.querySelector("#codexWeekProgress"),
+  codexWeekRemaining: document.querySelector("#codexWeekRemaining"),
+  car360Used: document.querySelector("#car360Used"),
+  car360Progress: document.querySelector("#car360Progress"),
+  car360Remaining: document.querySelector("#car360Remaining"),
+  deepseekBalance: document.querySelector("#deepseekBalance"),
+  deepseekStatus: document.querySelector("#deepseekStatus"),
+  goGithubAccount: document.querySelector("#goGithubAccount"),
+  goGithubWindows: document.querySelector("#goGithubWindows"),
+  goGithubEmpty: document.querySelector("#goGithubEmpty"),
+  goGmailAccount: document.querySelector("#goGmailAccount"),
+  goGmailWindows: document.querySelector("#goGmailWindows"),
+  goGmailEmpty: document.querySelector("#goGmailEmpty"),
+  codexSourceStatus: document.querySelector("#codexSourceStatus"),
+  car360SourceStatus: document.querySelector("#car360SourceStatus"),
+  deepseekSourceStatus: document.querySelector("#deepseekSourceStatus"),
+  goGithubSourceStatus: document.querySelector("#goGithubSourceStatus"),
+  goGmailSourceStatus: document.querySelector("#goGmailSourceStatus"),
+  updatedAt: document.querySelector("#updatedAt"),
+  syncAllButton: document.querySelector("#syncAllButton")
 };
 
 let state = loadState();
 
-function nextResetTime() {
-  const date = new Date();
-  date.setHours(date.getHours() + 3, 0, 0, 0);
-  return toDatetimeLocal(date);
-}
-
 function loadState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return sampleState;
-
   try {
-    return { ...sampleState, ...JSON.parse(raw) };
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
   } catch {
-    return sampleState;
+    return {};
   }
 }
 
@@ -73,29 +46,36 @@ function clamp(value, min, max) {
 }
 
 function formatNumber(value) {
-  return new Intl.NumberFormat("en-US").format(value || 0);
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value || 0);
 }
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 4
-  }).format(value || 0);
+function formatCompactNumber(value) {
+  const n = Number(value) || 0;
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return formatNumber(n);
 }
 
-function toDatetimeLocal(date) {
-  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+function formatCompactCurrency(value, currency) {
+  const symbol = { USD: "$", CNY: "¥" }[currency] || "";
+  return `${symbol}${Number(value).toFixed(2)}`;
 }
 
-function fromDatetimeLocal(value) {
-  return value ? new Date(value) : null;
+function formatDuration(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function formatDateTime(value) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "--";
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -104,217 +84,144 @@ function formatDateTime(value) {
   }).format(date);
 }
 
-function timeUntil(value) {
-  const target = fromDatetimeLocal(value);
-  if (!target || Number.isNaN(target.getTime())) return "--";
-
-  const diff = target.getTime() - Date.now();
-  if (diff <= 0) return "Reset due";
-
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) return `${days}d ${hours % 24}h`;
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  return `${minutes}m`;
+function tone(percent) {
+  if (percent >= 90) return "danger";
+  if (percent >= 70) return "warn";
+  return "good";
 }
 
-function statusClass(ratio) {
-  if (ratio >= 0.9) return "status-danger";
-  if (ratio >= 0.7) return "status-warn";
-  return "status-good";
+function setProgress(element, percent) {
+  const value = clamp(Number(percent) || 0, 0, 100);
+  element.style.width = `${value}%`;
+  element.dataset.tone = tone(value);
 }
 
-function renderQuota() {
-  const quota = state.quota || {};
-  const used = Number(quota.usedUnits ?? quota.usedMessages ?? 0);
-  const cap = Number(quota.windowCap ?? quota.messageCap ?? 0);
-  const remaining = Math.max(cap - used, 0);
-  const ratio = cap > 0 ? clamp(used / cap, 0, 1) : 0;
-
-  els.codexUsed.textContent = cap > 0 ? `${used} / ${cap}` : "No cap";
-  els.codexProgress.style.width = `${Math.round(ratio * 100)}%`;
-  els.codexProgress.style.background = ratio >= 0.9 ? "var(--danger)" : ratio >= 0.7 ? "var(--warn)" : "var(--accent)";
-  els.codexRemaining.textContent =
-    cap > 0 ? `${remaining} units left for ${quota.planName || "this quota"}` : "Configure your Codex window below";
-  els.codexRemaining.className = statusClass(ratio);
-  els.resetCountdown.textContent = timeUntil(quota.resetTime);
-  els.resetAt.textContent = quota.resetTime ? `Resets at ${formatDateTime(quota.resetTime)}` : "Add a reset time below";
-
-  els.planName.value = quota.planName || "";
-  els.usedUnits.value = used || "";
-  els.windowCap.value = cap || "";
-  els.resetTime.value = quota.resetTime || "";
-  els.notes.value = quota.notes || "";
-}
-
-function flattenBuckets(snapshot) {
-  const buckets = snapshot?.usage?.data?.data || [];
-  return buckets.flatMap((bucket) => bucket.results || []);
-}
-
-function summarizeUsage(snapshot) {
-  const rows = flattenBuckets(snapshot);
-  const models = new Map();
-
-  for (const row of rows) {
-    const model = row.model || "unknown";
-    const current = models.get(model) || {
-      model,
-      inputTokens: 0,
-      outputTokens: 0,
-      requests: 0
-    };
-    current.inputTokens += row.input_tokens || 0;
-    current.outputTokens += row.output_tokens || 0;
-    current.requests += row.num_model_requests || 0;
-    models.set(model, current);
-  }
-
-  return Array.from(models.values()).sort((a, b) => b.requests - a.requests);
-}
-
-function summarizeCost(snapshot) {
-  const buckets = snapshot?.costs?.data?.data || [];
-  return buckets.reduce((sum, bucket) => {
-    const results = bucket.results || [];
-    return (
-      sum +
-      results.reduce((inner, row) => inner + (row.amount?.value || 0), 0)
-    );
-  }, 0);
-}
-
-function renderApi() {
-  const snapshot = state.api;
-  const models = summarizeUsage(snapshot);
-  const totalRequests = models.reduce((sum, row) => sum + row.requests, 0);
-  const totalInput = models.reduce((sum, row) => sum + row.inputTokens, 0);
-  const totalOutput = models.reduce((sum, row) => sum + row.outputTokens, 0);
-  const cost = summarizeCost(snapshot);
-  const usageError = snapshot?.usage && !snapshot.usage.ok ? snapshot.usage.error : "";
-  const costError = snapshot?.costs && !snapshot.costs.ok ? snapshot.costs.error : "";
-
-  els.apiRequests.textContent = snapshot ? formatNumber(totalRequests) : "--";
-  els.apiTokens.textContent = snapshot
-    ? `${formatNumber(totalInput)} input / ${formatNumber(totalOutput)} output tokens`
-    : "Waiting for sync";
-  els.apiCost.textContent = snapshot ? formatCurrency(cost) : "--";
-  els.apiStatus.textContent = usageError || costError || (snapshot ? "Synced" : "Local only");
-  els.apiStatus.className = usageError || costError ? "status-warn" : "status-good";
-  els.apiUpdatedAt.textContent = snapshot?.generatedAt
-    ? `Updated ${formatDateTime(snapshot.generatedAt)}`
-    : "No API sync yet.";
-
-  els.modelList.innerHTML = "";
-  els.emptyModelState.style.display = models.length ? "none" : "grid";
-
-  for (const row of models) {
-    const total = row.inputTokens + row.outputTokens;
-    const el = document.createElement("div");
-    el.className = "model-row";
-    el.innerHTML = `
-      <div class="row-top">
-        <span class="row-title">${escapeHtml(row.model)}</span>
-        <span class="row-meta">${formatNumber(row.requests)} requests</span>
-      </div>
-      <div class="row-meta">${formatNumber(total)} total tokens · ${formatNumber(row.inputTokens)} input · ${formatNumber(row.outputTokens)} output</div>
-    `;
-    els.modelList.appendChild(el);
-  }
-}
-
-function renderLog() {
-  const log = state.quotaLog || [];
-  els.quotaLog.innerHTML = "";
-
-  if (!log.length) {
-    els.quotaLog.innerHTML = '<div class="empty-state">No quota entries yet.</div>';
+function renderCodex() {
+  const snapshot = state.codex;
+  const primary = snapshot?.ok ? snapshot.data?.rate_limit?.primary_window : null;
+  const weekly = snapshot?.ok ? snapshot.data?.rate_limit?.secondary_window : null;
+  if (!primary || !weekly) {
+    els.codexH5Remaining.textContent = snapshot?.error || "Unavailable";
+    els.codexWeekRemaining.textContent = snapshot?.error || "Unavailable";
+    els.codexSourceStatus.textContent = "Unavailable";
+    els.codexSourceStatus.className = "status-warn";
     return;
   }
-
-  for (const entry of log.slice(0, 8)) {
-    const used = Number(entry.usedUnits ?? entry.usedMessages ?? 0);
-    const cap = Number(entry.windowCap ?? entry.messageCap ?? 0);
-    const ratio = cap > 0 ? used / cap : 0;
-    const el = document.createElement("div");
-    el.className = "log-row";
-    el.innerHTML = `
-      <div class="row-top">
-        <span class="row-title">${escapeHtml(entry.planName || "Codex quota")}</span>
-        <span class="row-meta">${formatDateTime(entry.at)}</span>
-      </div>
-      <div class="progress"><span style="width: ${Math.round(clamp(ratio, 0, 1) * 100)}%"></span></div>
-      <div class="row-meta">${used} / ${cap} units · reset ${formatDateTime(entry.resetTime)}</div>
-      ${entry.notes ? `<div class="row-meta">${escapeHtml(entry.notes)}</div>` : ""}
-    `;
-    els.quotaLog.appendChild(el);
-  }
+  els.codexH5Used.textContent = `${primary.used_percent || 0}%`;
+  els.codexH5Remaining.textContent = `Resets in ${formatDuration(primary.reset_after_seconds)}`;
+  setProgress(els.codexH5Progress, primary.used_percent);
+  els.codexWeekUsed.textContent = `${weekly.used_percent || 0}%`;
+  els.codexWeekRemaining.textContent = `Resets in ${formatDuration(weekly.reset_after_seconds)}`;
+  setProgress(els.codexWeekProgress, weekly.used_percent);
+  els.codexSourceStatus.textContent = `Synced ${formatDateTime(snapshot.generatedAt)}`;
+  els.codexSourceStatus.className = "status-good";
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function renderCar360() {
+  const snapshot = state.car360;
+  const data = snapshot?.ok ? snapshot.data : null;
+  if (!data) {
+    els.car360Remaining.textContent = snapshot?.error || "Unavailable";
+    els.car360SourceStatus.textContent = "Unavailable";
+    els.car360SourceStatus.className = "status-warn";
+    return;
+  }
+  const limit = Number(data.subscription?.daily_limit_usd) || 100;
+  const used = Number(data.subscription?.daily_usage_usd) || 0;
+  const percent = limit > 0 ? (used / limit) * 100 : 0;
+  els.car360Used.innerHTML = `<span class="nowrap">${formatCompactCurrency(used, "USD")} <span class="divider">/</span> ${formatCompactCurrency(limit, "USD")}</span>`;
+  els.car360Remaining.textContent = `${formatCompactCurrency(data.remaining, "USD")} left · ${formatNumber(data.usage?.today?.requests)} requests`;
+  setProgress(els.car360Progress, percent);
+  els.car360SourceStatus.textContent = `Synced ${formatDateTime(snapshot.generatedAt)}`;
+  els.car360SourceStatus.className = "status-good";
+}
+
+function renderDeepSeek() {
+  const snapshot = state.deepseek;
+  const info = snapshot?.ok ? snapshot.data?.balance_infos?.[0] : null;
+  if (!info) {
+    els.deepseekBalance.textContent = "--";
+    els.deepseekStatus.textContent = snapshot?.error || "Unavailable";
+    els.deepseekSourceStatus.textContent = "Unavailable";
+    els.deepseekSourceStatus.className = "status-warn";
+    return;
+  }
+  const currency = info.currency === "CNY" ? "CNY" : info.currency || "USD";
+  els.deepseekBalance.innerHTML = `<span class="nowrap">${formatCompactCurrency(info.total_balance, currency)}</span>`;
+  els.deepseekStatus.textContent = snapshot.data.is_available ? "API available" : "API unavailable";
+  els.deepseekSourceStatus.textContent = `Synced ${formatDateTime(snapshot.generatedAt)}`;
+  els.deepseekSourceStatus.className = snapshot.data.is_available ? "status-good" : "status-danger";
+}
+
+function renderGoWindow(entry, label) {
+  const percent = Number(entry.usagePercent) || 0;
+  const element = document.createElement("div");
+  element.className = "usage-window";
+  element.innerHTML = `
+    <div class="row-top">
+      <span class="row-title">${label}</span>
+      <strong>${percent.toFixed(1)}%</strong>
+    </div>
+    <div class="progress"><span data-tone="${tone(percent)}" style="width:${clamp(percent, 0, 100)}%"></span></div>
+    <div class="row-meta"><span class="amount">${formatCompactNumber(entry.usage)}</span> <span class="divider">/</span> <span class="amount">${formatCompactNumber(entry.limit)}</span> · resets in ${formatDuration(entry.resetInSec)}</div>
+  `;
+  return element;
+}
+
+function renderGoAccount(label, snapshot, accountEl, windowsEl, emptyEl, statusEl) {
+  windowsEl.innerHTML = "";
+  if (!snapshot?.ok) {
+    accountEl.textContent = "Not connected";
+    accountEl.classList.remove("connected");
+    emptyEl.textContent = snapshot?.error || "Session not imported";
+    emptyEl.style.display = "grid";
+    statusEl.textContent = snapshot?.needsLogin ? "Login needed" : "Unavailable";
+    statusEl.className = "status-warn";
+    return;
+  }
+  accountEl.textContent = label;
+  accountEl.classList.add("connected");
+  emptyEl.style.display = "none";
+  windowsEl.append(
+    renderGoWindow(snapshot.rolling, "5 hours"),
+    renderGoWindow(snapshot.weekly, "Weekly"),
+    renderGoWindow(snapshot.monthly, "Monthly")
+  );
+  statusEl.textContent = `Synced ${formatDateTime(snapshot.generatedAt)}`;
+  statusEl.className = "status-good";
 }
 
 function render() {
-  renderQuota();
-  renderApi();
-  renderLog();
+  renderCodex();
+  renderCar360();
+  renderDeepSeek();
+  renderGoAccount("Github", state.goGithub, els.goGithubAccount, els.goGithubWindows, els.goGithubEmpty, els.goGithubSourceStatus);
+  renderGoAccount("Gmail", state.goGmail, els.goGmailAccount, els.goGmailWindows, els.goGmailEmpty, els.goGmailSourceStatus);
+  els.updatedAt.textContent = state.updatedAt ? `Updated ${formatDateTime(state.updatedAt)}` : "Waiting for sync";
 }
 
-els.quotaForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const quota = {
-    planName: els.planName.value.trim(),
-    usedUnits: Number(els.usedUnits.value || 0),
-    windowCap: Number(els.windowCap.value || 0),
-    resetTime: els.resetTime.value,
-    notes: els.notes.value.trim()
-  };
-
-  state.quota = quota;
-  state.quotaLog = [
-    { at: new Date().toISOString(), ...quota },
-    ...(state.quotaLog || [])
-  ].slice(0, 20);
-  saveState();
-  render();
-});
-
-els.syncApiButton.addEventListener("click", async () => {
-  if (!window.usageBridge) {
-    els.apiStatus.textContent = "API sync only works in the desktop app";
-    els.apiStatus.className = "status-warn";
-    return;
-  }
-
-  els.syncApiButton.disabled = true;
-  els.syncApiButton.textContent = "Syncing...";
-
+async function syncAll() {
+  if (!window.usageBridge) return;
+  els.syncAllButton.disabled = true;
+  els.syncAllButton.textContent = "Syncing...";
   try {
-    state.api = await window.usageBridge.getUsageSnapshot();
+    const [codex, car360, deepseek, goGithub, goGmail] = await Promise.all([
+      window.usageBridge.getCodexUsageSnapshot({ force: true }),
+      window.usageBridge.getCar360UsageSnapshot({ force: true }),
+      window.usageBridge.getDeepSeekBalance(),
+      window.usageBridge.getOpenCodeGoUsage({ label: "github" }),
+      window.usageBridge.getOpenCodeGoUsage({ label: "gmail" })
+    ]);
+    state = { codex, car360, deepseek, goGithub, goGmail, updatedAt: new Date().toISOString() };
     saveState();
     render();
-  } catch (error) {
-    els.apiStatus.textContent = error.message || "Sync failed";
-    els.apiStatus.className = "status-warn";
   } finally {
-    els.syncApiButton.disabled = false;
-    els.syncApiButton.textContent = "Sync API usage";
+    els.syncAllButton.disabled = false;
+    els.syncAllButton.textContent = "Sync all";
   }
-});
+}
 
-els.resetDemoButton.addEventListener("click", () => {
-  state = sampleState;
-  saveState();
-  render();
-});
-
+els.syncAllButton.addEventListener("click", syncAll);
 render();
-setInterval(renderQuota, 30000);
+syncAll();
+setInterval(syncAll, 5 * 60 * 1000);

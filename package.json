@@ -1,8 +1,8 @@
 {
-  "name": "codex-usage-desktop-dashboard",
+  "name": "ai-usage-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "A local desktop dashboard for tracking Codex usage windows and OpenAI API usage.",
+  "description": "Local desktop dashboard for AI usage: ChatGPT Codex, Car360, DeepSeek and OpenCode Go quotas.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",

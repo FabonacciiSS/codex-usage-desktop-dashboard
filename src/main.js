@@ -1,5 +1,336 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage } = require("electron");
 const path = require("path");
+const os = require("os");
+const fs = require("fs");
+
+// Keep Electron's OS encryption key stable even when a diagnostic entry point is used.
+app.setPath("userData", path.join(app.getPath("appData"), "codex-usage-desktop-dashboard"));
+
+const OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const OPENAI_OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/codex/usage";
+
+const CAR360_BASE_URL = "https://ai.car360.info";
+const CAR360_USAGE_URL = `${CAR360_BASE_URL}/v1/usage`;
+const OPENCODE_GO_BASE_URL = "https://opencode.ai";
+
+function readDotEnv() {
+  const result = {};
+  const candidates = [
+    process.env.USAGE_DASHBOARD_ENV_FILE,
+    path.join(os.homedir(), ".env"),
+    path.join(__dirname, "..", ".env")
+  ].filter(Boolean);
+  for (const file of candidates) {
+    try {
+      for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const separator = trimmed.indexOf("=");
+        if (separator < 1) continue;
+        result[trimmed.slice(0, separator).trim()] = trimmed.slice(separator + 1).trim();
+      }
+      return result;
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return result;
+}
+
+function sessionStorePath() {
+  return path.join(app.getPath("appData"), "codex-usage-desktop-dashboard", "opencode-go-sessions.json");
+}
+
+function readSessionStore() {
+  try {
+    return JSON.parse(fs.readFileSync(sessionStorePath(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeSessionStore(store) {
+  fs.mkdirSync(path.dirname(sessionStorePath()), { recursive: true });
+  fs.writeFileSync(sessionStorePath(), JSON.stringify(store, null, 2), "utf8");
+}
+
+function importOpenCodeGoSessionFromEnvironment() {
+  const label = process.env.OPENCODE_GO_IMPORT_LABEL;
+  const workspaceId = process.env.OPENCODE_GO_WORKSPACE_ID;
+  const cookieFile = process.env.OPENCODE_GO_COOKIE_FILE;
+  if (!label || !workspaceId || !cookieFile) return;
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Windows credential encryption is unavailable");
+  }
+  const cookie = fs.readFileSync(cookieFile, "utf8").trim();
+  const store = readSessionStore();
+  store[label] = {
+    workspaceId,
+    auth: safeStorage.encryptString(cookie).toString("base64"),
+    importedAt: new Date().toISOString()
+  };
+  writeSessionStore(store);
+  fs.rmSync(cookieFile, { force: true });
+}
+
+function parseOpenCodeUsage(html) {
+  function parseWindow(name) {
+    const re = new RegExp(`${name}:\\$R\\[\\d+\\]=\\{status:\"([^\"]+)\",resetInSec:(\\d+),usagePercent:([\\d.]+),usage:(\\d+),limit:(\\d+)\\}`);
+    const match = html.match(re);
+    if (!match) return null;
+    return {
+      status: match[1],
+      resetInSec: Number(match[2]),
+      usagePercent: Number(match[3]),
+      usage: Number(match[4]),
+      limit: Number(match[5])
+    };
+  }
+  const email = html.match(/userEmail\[[^\]]+\][\s\S]*?\$R\[28\]\(\$R\[1\],\"([^\"]+)\"\)/)?.[1] || null;
+  return {
+    email,
+    rolling: parseWindow("rollingUsage"),
+    weekly: parseWindow("weeklyUsage"),
+    monthly: parseWindow("monthlyUsage")
+  };
+}
+
+async function getOpenCodeGoUsage(label) {
+  const record = readSessionStore()[label];
+  if (!record) return { ok: false, needsLogin: true, error: "Account session not imported" };
+  let cookie;
+  try {
+    cookie = safeStorage.decryptString(Buffer.from(record.auth, "base64"));
+  } catch {
+    return { ok: false, needsLogin: true, error: "Saved session could not be decrypted" };
+  }
+  const url = `${OPENCODE_GO_BASE_URL}/workspace/${record.workspaceId}/go`;
+  const response = await fetch(url, {
+    headers: {
+      Cookie: `oc_locale=en; auth=${cookie}`,
+      Accept: "text/html,application/xhtml+xml",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    },
+    redirect: "follow"
+  });
+  const html = await response.text();
+  const usage = parseOpenCodeUsage(html);
+  if (!response.ok || !usage.rolling || !usage.weekly || !usage.monthly) {
+    return { ok: false, needsLogin: true, error: "OpenCode Go session expired or usage page changed" };
+  }
+  return { ok: true, generatedAt: new Date().toISOString(), workspaceId: record.workspaceId, ...usage };
+}
+
+async function getDeepSeekBalance() {
+  const apiKey = process.env.DEEPSEEK_API_KEY || readDotEnv().DEEPSEEK_API_KEY;
+  if (!apiKey) return { ok: false, error: "DeepSeek API key not configured" };
+  const response = await fetch("https://api.deepseek.com/user/balance", {
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) return { ok: false, error: body.error?.message || `DeepSeek balance failed (${response.status})` };
+  return { ok: true, generatedAt: new Date().toISOString(), data: body };
+}
+
+function findCar360ApiKey() {
+  if (process.env.CAR360_API_KEY) return process.env.CAR360_API_KEY;
+  for (const p of [
+    path.join(os.homedir(), ".codex", "auth.json"),
+    path.join(os.homedir(), ".codex", "config.toml")
+  ]) {
+    try {
+      const raw = fs.readFileSync(p, "utf8");
+      const m = raw.match(/OPENAI_API_KEY\s*[:=]\s*"?((?:sk-)?[A-Za-z0-9]{20,})"?/);
+      if (m && m[1]) return m[1];
+      if (p.endsWith(".json")) {
+        const parsed = JSON.parse(raw);
+        if (parsed.OPENAI_API_KEY) return parsed.OPENAI_API_KEY;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+let lastCar360Snapshot = null;
+
+async function getCar360UsageSnapshot({ force }) {
+  const now = Date.now();
+  if (!force && lastCar360Snapshot && now - lastCar360Snapshot.generatedAtMs < SNAPSHOT_TTL_MS) {
+    return lastCar360Snapshot.data;
+  }
+
+  const apiKey = findCar360ApiKey();
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: "Car360 API key not found. Set CAR360_API_KEY env var or configure it in ~/.codex/auth.json."
+    };
+  }
+
+  const response = await fetch(`${CAR360_USAGE_URL}?days=1`, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: body.detail || body.error?.message || body.message || `Car360 usage request failed (${response.status})`,
+      body
+    };
+  }
+
+  const data = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    generatedAtMs: now,
+    data: body
+  };
+  lastCar360Snapshot = { generatedAtMs: now, data };
+  return data;
+}
+
+function findOpenCodeAuthFile() {
+  const candidates = [];
+  if (process.env.OPENCODE_AUTH_FILE) candidates.push(process.env.OPENCODE_AUTH_FILE);
+  candidates.push(
+    path.join(os.homedir(), ".local", "share", "opencode", "auth.json"),
+    path.join(os.homedir(), "AppData", "Roaming", "opencode", "auth.json")
+  );
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+async function refreshOpenAIToken(refreshToken) {
+  const form = new URLSearchParams({
+    grant_type: "refresh_token",
+    client_id: OPENAI_OAUTH_CLIENT_ID,
+    redirect_uri: "https://openai.com/app",
+    refresh_token: refreshToken
+  });
+  const response = await fetch(OPENAI_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString()
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: body.error?.message || body.error_description || `Token refresh failed (${response.status})`
+    };
+  }
+  return {
+    ok: true,
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token,
+    expiresInSec: body.expires_in
+  };
+}
+
+let lastCodexSnapshot = null;
+const SNAPSHOT_TTL_MS = 60 * 1000;
+
+async function getCodexUsageSnapshot({ force }) {
+  const now = Date.now();
+  if (!force && lastCodexSnapshot && now - lastCodexSnapshot.generatedAtMs < SNAPSHOT_TTL_MS) {
+    return lastCodexSnapshot.data;
+  }
+
+  const authFile = findOpenCodeAuthFile();
+  if (!authFile) {
+    return {
+      ok: false,
+      error:
+        "OpenCode auth.json not found. Install/authenticate opencode (opencode auth login) or run with OPENCODE_AUTH_FILE=<path>."
+    };
+  }
+
+  let auth;
+  try {
+    auth = JSON.parse(fs.readFileSync(authFile, "utf8")).openai;
+  } catch (error) {
+    return { ok: false, error: `Failed to read ${authFile}: ${error.message}` };
+  }
+
+  if (!auth || !auth.access) {
+    return { ok: false, error: "No OpenAI OAuth credentials found in opencode auth.json." };
+  }
+
+  let accessToken = auth.access;
+  let refreshed = false;
+
+  const expiresMs = Number(auth.expires || 0);
+  if (expiresMs - now < 60 * 1000 && auth.refresh) {
+    const refreshedToken = await refreshOpenAIToken(auth.refresh);
+    if (refreshedToken.ok) {
+      accessToken = refreshedToken.accessToken;
+      refreshed = true;
+      try {
+        const parsed = JSON.parse(fs.readFileSync(authFile, "utf8"));
+        parsed.openai = {
+          ...parsed.openai,
+          access: refreshedToken.accessToken,
+          refresh: refreshedToken.refreshToken || refreshedToken.accessToken,
+          expires: now + refreshedToken.expiresInSec * 1000
+        };
+        fs.writeFileSync(authFile, JSON.stringify(parsed, null, 2), "utf8");
+      } catch (error) {
+        return {
+          ok: false,
+          error: `Token refreshed but failed to persist: ${error.message}`
+        };
+      }
+    } else {
+      return {
+        ok: false,
+        error: `OpenAI OAuth refresh failed: ${refreshedToken.error}. Run 'opencode auth login' to re-authenticate.`
+      };
+    }
+  }
+
+  const response = await fetch(CODEX_USAGE_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: body.detail || body.error?.message || `Codex usage request failed (${response.status})`
+    };
+  }
+
+  const data = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    generatedAtMs: now,
+    refreshed,
+    data: body
+  };
+  lastCodexSnapshot = { generatedAtMs: now, data };
+  return data;
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -8,7 +339,7 @@ function createWindow() {
     minWidth: 920,
     minHeight: 640,
     title: "Codex Usage Dashboard",
-    backgroundColor: "#f6f7f9",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#111418" : "#f6f7f9",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -19,7 +350,15 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "index.html"));
 }
 
+app.on("nativeTheme", () => {
+  const themeGenerated = nativeTheme.shouldUseDarkColors;
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.setBackgroundColor(themeGenerated ? "#111418" : "#f6f7f9");
+  }
+});
+
 app.whenReady().then(() => {
+  importOpenCodeGoSessionFromEnvironment();
   createWindow();
 
   app.on("activate", () => {
@@ -94,4 +433,18 @@ ipcMain.handle("openai:getUsageSnapshot", async () => {
     usage,
     costs
   };
+});
+
+ipcMain.handle("codex:getUsageSnapshot", async (event, payload = {}) => {
+  return getCodexUsageSnapshot({ force: Boolean(payload.force) });
+});
+
+ipcMain.handle("car360:getUsageSnapshot", async (event, payload = {}) => {
+  return getCar360UsageSnapshot({ force: Boolean(payload.force) });
+});
+
+ipcMain.handle("deepseek:getBalance", async () => getDeepSeekBalance());
+
+ipcMain.handle("opencode-go:getUsage", async (event, payload = {}) => {
+  return getOpenCodeGoUsage(payload.label);
 });

@@ -1,98 +1,90 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Codex Usage Dashboard</title>
+    <title>AI Usage Dashboard</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Local usage tracker</p>
-          <h1>Codex Usage Dashboard</h1>
+          <p class="eyebrow">Local usage monitor</p>
+          <h1>AI Usage Dashboard</h1>
         </div>
         <div class="topbar-actions">
-          <button id="syncApiButton" type="button">Sync API usage</button>
-          <button id="resetDemoButton" type="button" class="secondary">Reset sample</button>
+          <span id="updatedAt" class="updated-at">Waiting for sync</span>
+          <button id="syncAllButton" type="button">Sync all</button>
         </div>
       </header>
 
       <section class="grid summary-grid" aria-label="Usage summary">
         <article class="metric-card">
-          <span class="metric-label">Codex usage window</span>
-          <strong id="codexUsed">0 / 0</strong>
-          <div class="progress"><span id="codexProgress"></span></div>
-          <small id="codexRemaining">No window configured</small>
+          <span class="metric-label">ChatGPT Codex · 5 hours</span>
+          <strong id="codexH5Used">--</strong>
+          <div class="progress"><span id="codexH5Progress"></span></div>
+          <small id="codexH5Remaining">Waiting for sync</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Next reset</span>
-          <strong id="resetCountdown">--</strong>
-          <small id="resetAt">Add a reset time below</small>
+          <span class="metric-label">ChatGPT Codex · weekly</span>
+          <strong id="codexWeekUsed">--</strong>
+          <div class="progress"><span id="codexWeekProgress"></span></div>
+          <small id="codexWeekRemaining">Waiting for sync</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">API requests, 30d</span>
-          <strong id="apiRequests">--</strong>
-          <small id="apiTokens">Waiting for sync</small>
+          <span class="metric-label">Car360 · daily</span>
+          <strong id="car360Used">--</strong>
+          <div class="progress"><span id="car360Progress"></span></div>
+          <small id="car360Remaining">Waiting for sync</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">API cost, 30d</span>
-          <strong id="apiCost">--</strong>
-          <small id="apiStatus">Local only</small>
+          <span class="metric-label">DeepSeek API balance</span>
+          <strong id="deepseekBalance">--</strong>
+          <small id="deepseekStatus">Waiting for sync</small>
         </article>
       </section>
 
-      <section class="layout">
-        <form id="quotaForm" class="panel">
+      <section class="go-grid" aria-label="OpenCode Go usage">
+        <article class="panel go-panel">
           <div class="panel-heading">
-            <h2>Codex quota</h2>
-            <p>For Codex limits shown in the product.</p>
+            <div>
+              <p class="eyebrow">OpenCode Go</p>
+              <h2>Github account</h2>
+            </div>
+            <span id="goGithubAccount" class="account-pill">Not connected</span>
           </div>
+          <div id="goGithubWindows" class="usage-windows"></div>
+          <div id="goGithubEmpty" class="empty-state compact">Session not imported</div>
+        </article>
 
-          <label>
-            Plan, model, or window
-            <input id="planName" type="text" placeholder="Plus weekly / 5-hour window / GPT-5.6 Terra..." />
-          </label>
-          <div class="two-col">
-            <label>
-              Used units
-              <input id="usedUnits" type="number" min="0" step="1" />
-            </label>
-            <label>
-              Window cap
-              <input id="windowCap" type="number" min="0" step="1" />
-            </label>
-          </div>
-          <label>
-            Reset time
-            <input id="resetTime" type="datetime-local" />
-          </label>
-          <label>
-            Notes
-            <textarea id="notes" rows="4" placeholder="Example: Codex 5-hour window, reset shown in Settings > Usage."></textarea>
-          </label>
-          <button type="submit">Save Codex quota</button>
-        </form>
-
-        <section class="panel">
+        <article class="panel go-panel">
           <div class="panel-heading">
-            <h2>API usage by model</h2>
-            <p id="apiUpdatedAt">No API sync yet.</p>
+            <div>
+              <p class="eyebrow">OpenCode Go</p>
+              <h2>Gmail account</h2>
+            </div>
+            <span id="goGmailAccount" class="account-pill">Not connected</span>
           </div>
-          <div id="modelList" class="model-list"></div>
-          <div id="emptyModelState" class="empty-state">
-            Add `OPENAI_ADMIN_KEY` and click sync to load OpenAI API usage.
-          </div>
-        </section>
+          <div id="goGmailWindows" class="usage-windows"></div>
+          <div id="goGmailEmpty" class="empty-state compact">Session not imported</div>
+        </article>
       </section>
 
-      <section class="panel">
+      <section class="panel status-panel">
         <div class="panel-heading">
-          <h2>Recent quota log</h2>
-          <p>Useful when Codex only shows reset timing in-product.</p>
+          <div>
+            <p class="eyebrow">Provider status</p>
+            <h2>Automatic data sources</h2>
+          </div>
         </div>
-        <div id="quotaLog" class="quota-log"></div>
+        <div class="status-list">
+          <div><span>ChatGPT Codex</span><strong id="codexSourceStatus">--</strong></div>
+          <div><span>Car360 gateway</span><strong id="car360SourceStatus">--</strong></div>
+          <div><span>DeepSeek API</span><strong id="deepseekSourceStatus">--</strong></div>
+          <div><span>OpenCode Go · Github</span><strong id="goGithubSourceStatus">--</strong></div>
+          <div><span>OpenCode Go · Gmail</span><strong id="goGmailSourceStatus">--</strong></div>
+        </div>
       </section>
     </main>
 
