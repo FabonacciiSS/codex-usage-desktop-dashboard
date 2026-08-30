@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex Usage Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local usage tracker</p>
+          <h1>Codex Usage Dashboard</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="syncApiButton" type="button">Sync API usage</button>
+          <button id="resetDemoButton" type="button" class="secondary">Reset sample</button>
+        </div>
+      </header>
+
+      <section class="grid summary-grid" aria-label="Usage summary">
+        <article class="metric-card">
+          <span class="metric-label">Codex usage window</span>
+          <strong id="codexUsed">0 / 0</strong>
+          <div class="progress"><span id="codexProgress"></span></div>
+          <small id="codexRemaining">No window configured</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Next reset</span>
+          <strong id="resetCountdown">--</strong>
+          <small id="resetAt">Add a reset time below</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">API requests, 30d</span>
+          <strong id="apiRequests">--</strong>
+          <small id="apiTokens">Waiting for sync</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">API cost, 30d</span>
+          <strong id="apiCost">--</strong>
+          <small id="apiStatus">Local only</small>
+        </article>
+      </section>
+
+      <section class="layout">
+        <form id="quotaForm" class="panel">
+          <div class="panel-heading">
+            <h2>Codex quota</h2>
+            <p>For Codex limits shown in the product.</p>
+          </div>
+
+          <label>
+            Plan, model, or window
+            <input id="planName" type="text" placeholder="Plus weekly / 5-hour window / GPT-5.6 Terra..." />
+          </label>
+          <div class="two-col">
+            <label>
+              Used units
+              <input id="usedUnits" type="number" min="0" step="1" />
+            </label>
+            <label>
+              Window cap
+              <input id="windowCap" type="number" min="0" step="1" />
+            </label>
+          </div>
+          <label>
+            Reset time
+            <input id="resetTime" type="datetime-local" />
+          </label>
+          <label>
+            Notes
+            <textarea id="notes" rows="4" placeholder="Example: Codex 5-hour window, reset shown in Settings > Usage."></textarea>
+          </label>
+          <button type="submit">Save Codex quota</button>
+        </form>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <h2>API usage by model</h2>
+            <p id="apiUpdatedAt">No API sync yet.</p>
+          </div>
+          <div id="modelList" class="model-list"></div>
+          <div id="emptyModelState" class="empty-state">
+            Add `OPENAI_ADMIN_KEY` and click sync to load OpenAI API usage.
+          </div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Recent quota log</h2>
+          <p>Useful when Codex only shows reset timing in-product.</p>
+        </div>
+        <div id="quotaLog" class="quota-log"></div>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
