@@ -167,7 +167,7 @@ async function getCar360UsageSnapshot({ force }) {
   if (!apiKey) {
     return {
       ok: false,
-      error: "Car360 API key not found. Set CAR360_API_KEY env var or configure it in ~/.codex/auth.json."
+      error: "Gateway API key not found. Set CAR360_API_KEY env var or configure it in ~/.codex/auth.json."
     };
   }
 
@@ -184,7 +184,7 @@ async function getCar360UsageSnapshot({ force }) {
     return {
       ok: false,
       status: response.status,
-      error: body.detail || body.error?.message || body.message || `Car360 usage request failed (${response.status})`,
+      error: body.detail || body.error?.message || body.message || `Gateway usage request failed (${response.status})`,
       body
     };
   }

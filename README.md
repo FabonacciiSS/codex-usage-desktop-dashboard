@@ -7,11 +7,17 @@
 ## 支持的数据源
 
 - **ChatGPT Codex** — 5 小时与每周窗口的用量百分比和重置时间。
-- **Car360** — 每日 `$100` 限额的已用 / 剩余金额与请求数。
+- **API Gateway** — 任意 OpenAI 兼容的网关 / 共享订阅接口的每日用量：限额、已用金额、剩余与请求数。
 - **DeepSeek API** — 实时账户余额。
 - **OpenCode Go** — 多个账号（如 Github、Gmail）各自的 5 小时 / 每周 / 每月用量、Token 与额度。
 
 所有数据由本机应用直接调用官方接口获取，刷新一次或在后台定时同步。
+
+## 什么是 API Gateway 额度？
+
+有的订阅是按"团队共享"提供的，会包装成一个 **OpenAI 兼容的 API 网关（gateway）** 供多个工具共用——例如 OpenCode 里配置为 custom provider，或通过 CC Switch 之类的工具接入 Codex/Claude。这类接口通常有**按天 / 按周 / 按月的额度限制**。本仪表盘的 **Gateway** 卡片就是用来实时跟踪这类共享订阅的额度，避免估算剩余。
+
+你可以在 `src/main.js` 顶部把网关地址换成自己使用的任意 OpenAI 兼容网关即可复用该卡片（配合环境变量或 `~/.codex/auth.json` 中的 API key）。
 
 ## 启动
 
