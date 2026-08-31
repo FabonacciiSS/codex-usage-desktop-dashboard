@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, nativeTheme, safeStorage } = require("elect
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const { execFile } = require("child_process");
 
 // Keep Electron's OS encryption key stable even when a diagnostic entry point is used.
 app.setPath("userData", path.join(app.getPath("appData"), "codex-usage-desktop-dashboard"));
@@ -304,23 +305,47 @@ async function getCodexUsageSnapshot({ force }) {
     }
   }
 
-  const response = await fetch(CODEX_USAGE_URL, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-    }
+  // chatgpt.com rejects Electron's TLS fingerprint (403). Route the request through
+  // a local Python helper, whose network stack passes the reverse-proxy check.
+  const helper = path.join(__dirname, "..", "scripts", "codex_pyfetch.py");
+  const raw = await new Promise((resolve) => {
+    const child = execFile(
+      process.env.PYTHON || "python",
+      [helper],
+      {
+        encoding: "utf8",
+        timeout: 30000,
+        env: { ...process.env, OPENAI_ACCESS_TOKEN: accessToken }
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolve(JSON.stringify({ ok: false, error: `Python helper failed: ${error.message}` }));
+          return;
+        }
+        try {
+          resolve(stdout);
+        } catch {
+          resolve(JSON.stringify({ ok: false, error: "Python helper returned invalid output" }));
+        }
+      }
+    );
   });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: "Codex fetch helper returned invalid JSON" };
+  }
+
+  if (!payload.ok) {
     return {
       ok: false,
-      status: response.status,
-      error: body.detail || body.error?.message || `Codex usage request failed (${response.status})`
+      status: payload.status,
+      error: payload.error || "Codex usage request failed"
     };
   }
 
+  const body = payload.data;
   const data = {
     ok: true,
     generatedAt: new Date().toISOString(),
