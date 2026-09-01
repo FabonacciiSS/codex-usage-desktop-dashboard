@@ -1,4 +1,4 @@
-import json, sys, os, urllib.request, uuid
+import json, sys, os, time, urllib.request, uuid
 
 token = os.environ.get("OPENAI_ACCESS_TOKEN", "").strip()
 if not token:
@@ -19,14 +19,20 @@ headers = {
 }
 
 url = "https://chatgpt.com/backend-api/codex/usage"
-try:
-    req = urllib.request.Request(url, headers=headers)
-    resp = urllib.request.urlopen(req, timeout=25)
-    body = resp.read().decode("utf-8", "replace")
-    data = json.loads(body)
-    print(json.dumps({"ok": True, "status": resp.status, "data": data}))
-except urllib.error.HTTPError as e:
-    msg = e.read().decode("utf-8", "replace")[:500]
-    print(json.dumps({"ok": False, "status": e.code, "error": msg}))
-except Exception as e:
-    print(json.dumps({"ok": False, "error": str(e)}))
+last_error = None
+for attempt in range(2):
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        resp = urllib.request.urlopen(req, timeout=25)
+        body = resp.read().decode("utf-8", "replace")
+        data = json.loads(body)
+        print(json.dumps({"ok": True, "status": resp.status, "data": data}))
+        sys.exit(0)
+    except urllib.error.HTTPError as e:
+        last_error = {"status": e.code, "error": e.read().decode("utf-8", "replace")[:500]}
+    except Exception as e:
+        last_error = {"error": str(e)}
+    if attempt == 0:
+        time.sleep(1.0)
+
+print(json.dumps({"ok": False, **(last_error or {"error": "Unknown error"})}))

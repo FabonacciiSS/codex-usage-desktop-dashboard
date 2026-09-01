@@ -30,9 +30,23 @@ const els = {
 
 let state = loadState();
 
+function isSameLocalDay(left, right = new Date()) {
+  const date = left ? new Date(left) : null;
+  if (!date || Number.isNaN(date.getTime())) return false;
+  return (
+    date.getFullYear() === right.getFullYear() &&
+    date.getMonth() === right.getMonth() &&
+    date.getDate() === right.getDate()
+  );
+}
+
 function loadState() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    const cached = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    if (cached.car360?.generatedAt && !isSameLocalDay(cached.car360.generatedAt)) {
+      delete cached.car360;
+    }
+    return cached;
   } catch {
     return {};
   }
@@ -114,15 +128,19 @@ function renderCodex() {
   els.codexWeekUsed.textContent = `${weekly.used_percent || 0}%`;
   els.codexWeekRemaining.textContent = `Resets in ${formatDuration(weekly.reset_after_seconds)}`;
   setProgress(els.codexWeekProgress, weekly.used_percent);
-  els.codexSourceStatus.textContent = `Synced ${formatDateTime(snapshot.generatedAt)}`;
-  els.codexSourceStatus.className = "status-good";
+  els.codexSourceStatus.textContent = snapshot.syncError
+    ? `Last sync failed · showing ${formatDateTime(snapshot.generatedAt)}`
+    : `Synced ${formatDateTime(snapshot.generatedAt)}`;
+  els.codexSourceStatus.className = snapshot.syncError ? "status-warn" : "status-good";
 }
 
 function renderCar360() {
   const snapshot = state.car360;
   const data = snapshot?.ok ? snapshot.data : null;
   if (!data) {
-    els.car360Remaining.textContent = snapshot?.error || "Unavailable";
+    els.car360Used.textContent = "--";
+    setProgress(els.car360Progress, 0);
+    els.car360Remaining.textContent = snapshot?.error || "Syncing current day…";
     els.car360SourceStatus.textContent = "Unavailable";
     els.car360SourceStatus.className = "status-warn";
     return;
@@ -133,8 +151,10 @@ function renderCar360() {
   els.car360Used.innerHTML = `<span class="nowrap">${formatCompactCurrency(used, "USD")} <span class="divider">/</span> ${formatCompactCurrency(limit, "USD")}</span>`;
   els.car360Remaining.textContent = `${formatCompactCurrency(data.remaining, "USD")} left · ${formatNumber(data.usage?.today?.requests)} requests`;
   setProgress(els.car360Progress, percent);
-  els.car360SourceStatus.textContent = `Synced ${formatDateTime(snapshot.generatedAt)}`;
-  els.car360SourceStatus.className = "status-good";
+  els.car360SourceStatus.textContent = snapshot.syncError
+    ? `Last sync failed · showing ${formatDateTime(snapshot.generatedAt)}`
+    : `Synced ${formatDateTime(snapshot.generatedAt)}`;
+  els.car360SourceStatus.className = snapshot.syncError ? "status-warn" : "status-good";
 }
 
 function renderDeepSeek() {
@@ -213,7 +233,37 @@ async function syncAll() {
       window.usageBridge.getOpenCodeGoUsage({ label: "github" }),
       window.usageBridge.getOpenCodeGoUsage({ label: "gmail" })
     ]);
-    state = { codex, car360, deepseek, goGithub, goGmail, updatedAt: new Date().toISOString() };
+    const keepLastSuccess = (previous, next) => {
+      if (next?.ok) return next;
+      if (previous?.ok) {
+        return {
+          ...previous,
+          syncError: next?.error || "Sync failed",
+          lastAttemptAt: new Date().toISOString()
+        };
+      }
+      return next;
+    };
+    const keepCurrentDayGateway = (previous, next) => {
+      if (next?.ok) return next;
+      if (previous?.ok && isSameLocalDay(previous.generatedAt)) {
+        return {
+          ...previous,
+          syncError: next?.error || "Sync failed",
+          lastAttemptAt: new Date().toISOString()
+        };
+      }
+      return next;
+    };
+
+    state = {
+      codex: keepLastSuccess(state.codex, codex),
+      car360: keepCurrentDayGateway(state.car360, car360),
+      deepseek,
+      goGithub,
+      goGmail,
+      updatedAt: new Date().toISOString()
+    };
     saveState();
     render();
   } finally {

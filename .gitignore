@@ -10,6 +10,8 @@ secrets/
 # Dependencies
 node_modules/
 dist/
+__pycache__/
+*.py[cod]
 
 # Build / packaging
 *.zip
