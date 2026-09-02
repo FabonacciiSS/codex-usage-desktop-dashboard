@@ -40,10 +40,14 @@ function isSameLocalDay(left, right = new Date()) {
   );
 }
 
+function localDayKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function loadState() {
   try {
     const cached = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-    if (cached.car360?.generatedAt && !isSameLocalDay(cached.car360.generatedAt)) {
+    if (!cached.car360?.dataDate || cached.car360.dataDate !== localDayKey()) {
       delete cached.car360;
     }
     return cached;
@@ -246,7 +250,7 @@ async function syncAll() {
     };
     const keepCurrentDayGateway = (previous, next) => {
       if (next?.ok) return next;
-      if (previous?.ok && isSameLocalDay(previous.generatedAt)) {
+      if (previous?.ok && previous.dataDate === localDayKey()) {
         return {
           ...previous,
           syncError: next?.error || "Sync failed",

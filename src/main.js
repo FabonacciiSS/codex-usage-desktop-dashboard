@@ -190,10 +190,26 @@ async function getCar360UsageSnapshot({ force }) {
     };
   }
 
+  const localNow = new Date();
+  const today = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, "0")}-${String(localNow.getDate()).padStart(2, "0")}`;
+  const latestUsageDate = body.daily_usage?.at?.(-1)?.date || null;
+  const dailySpend = Number(body.subscription?.daily_usage_usd) || 0;
+  // The gateway can briefly serve the previous day's aggregate after midnight.
+  // Reject it instead of persisting yesterday's spend under today's fetch time.
+  if (latestUsageDate && latestUsageDate !== today && dailySpend > 0) {
+    return {
+      ok: false,
+      stale: true,
+      dataDate: latestUsageDate,
+      error: `Gateway has not published ${today} usage yet`
+    };
+  }
+
   const data = {
     ok: true,
     generatedAt: new Date().toISOString(),
     generatedAtMs: now,
+    dataDate: latestUsageDate || today,
     data: body
   };
   lastCar360Snapshot = { generatedAtMs: now, data };
